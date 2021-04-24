@@ -5,6 +5,8 @@ from aiogram.utils import executor
 
 import keyboards
 import messages
+import requests
+import json
 from config import dp, bot
 from states import Registration
 
@@ -13,6 +15,33 @@ from states import Registration
 async def handle_start_cmd(message: types.Message):
     await message.answer('Приветственное сообщение. Отправьте свой регион')
     await Registration.Region.set()
+
+
+def get_regions(start_num: int, size: int = 50):
+    regions = json.loads(requests.get('https://cptgrants.org/api/regions/').content.decode('utf-8'))
+    regions = sorted(regions, key=lambda a: a['id'])
+    overall_items = len(regions)
+    if start_num >= overall_items:
+        return []
+    elif start_num + size >= overall_items:
+        return regions[start_num:overall_items+1]
+    else:
+        return regions[start_num:start_num+size]
+
+
+@dp.inline_handler()
+async def inline_handler(query: types.InlineQuery):
+    query_offset = int(query.offset) if query.offset else 0
+    results = [types.InlineQueryResultArticle(
+        id=str(region['id']),
+        title=region['name'],
+        input_message_content=types.InputTextMessageContent(
+                message_text=region['name'])
+    ) for region in get_regions(query_offset)]
+    if len(results) < 50:
+        await query.answer(results, next_offset="")
+    else:
+        await query.answer(results, next_offset=str(query_offset+50))
 
 
 @dp.message_handler(state=Registration.Region)
